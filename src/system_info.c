@@ -501,7 +501,7 @@ vulkan_command_version(ShThreadContext *thread_context, ShAllocator allocator, v
 
     ShString version_str;
     version_str.count = len;
-    version_str.data = buf;
+    version_str.data  = (uint8_t *) buf;
 
     return push_string(allocator, parent, ShStringLiteral("version"), sh_copy_string(allocator, version_str));
 }
