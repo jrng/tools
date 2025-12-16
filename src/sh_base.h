@@ -180,6 +180,7 @@ SH_BASE_DEF void *sh_arena_realloc(ShArena *arena, void *ptr, usize old_size, us
 SH_BASE_DEF ShAllocator sh_arena_get_allocator(ShArena *arena);
 
 SH_BASE_DEF void *sh_array_grow(void *array, usize new_allocated, usize item_size, ShAllocator allocator);
+SH_BASE_DEF void sh_array_free(void *array);
 
 SH_BASE_DEF void *sh_alloc(ShAllocator allocator, usize size);
 SH_BASE_DEF void *sh_realloc(ShAllocator allocator, void *ptr, usize old_size, usize size);
@@ -348,6 +349,16 @@ sh_array_grow(void *array, usize allocated, usize item_size, ShAllocator allocat
     }
 
     return array_header + 1;
+}
+
+SH_BASE_DEF void
+sh_array_free(void *array)
+{
+    if (array)
+    {
+        ShArrayHeader *array_header = sh_array_header(array);
+        sh_free(array_header->allocator, array_header);
+    }
 }
 
 SH_BASE_DEF void *

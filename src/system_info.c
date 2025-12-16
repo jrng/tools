@@ -708,12 +708,436 @@ info_command_vulkan(ShThreadContext *thread_context, ShAllocator allocator, void
 
 #endif // SH_PLATFORM_ANDROID || SH_PLATFORM_WINDOWS || SH_PLATFORM_LINUX
 
+#if SH_PLATFORM_LINUX
+
+#  include <wayland-client.h>
+
+#  include "wayland/drm_fourcc.h"
+
+#  include "wayland/linux-dmabuf-unstable-v1.h"
+#  include "wayland/linux-dmabuf-unstable-v1.c"
+
+typedef struct
+{
+    uint32_t format;
+    uint64_t modifier;
+} WaylandDmaBufFormat;
+
+typedef struct
+{
+    ShString name;
+    uint32_t version;
+} WaylandInterface;
+
+typedef struct
+{
+    ShAllocator allocator;
+
+    struct wl_display *display;
+
+    WaylandInterface *interfaces;
+    WaylandDmaBufFormat *dmabuf_formats;
+} WaylandContext;
+
+static ShString
+drm_format_to_string(ShThreadContext *thread_context, ShAllocator allocator, uint32_t format)
+{
+    ShString result = ShStringEmpty;
+
+#define NAME(name) case name: result = ShStringLiteral(#name); break
+
+    switch (format)
+    {
+        NAME(DRM_FORMAT_INVALID);
+        NAME(DRM_FORMAT_C1);
+        NAME(DRM_FORMAT_C2);
+        NAME(DRM_FORMAT_C4);
+        NAME(DRM_FORMAT_C8);
+        NAME(DRM_FORMAT_D1);
+        NAME(DRM_FORMAT_D2);
+        NAME(DRM_FORMAT_D4);
+        NAME(DRM_FORMAT_D8);
+        NAME(DRM_FORMAT_R1);
+        NAME(DRM_FORMAT_R2);
+        NAME(DRM_FORMAT_R4);
+        NAME(DRM_FORMAT_R8);
+        NAME(DRM_FORMAT_R10);
+        NAME(DRM_FORMAT_R12);
+        NAME(DRM_FORMAT_R16);
+        NAME(DRM_FORMAT_RG88);
+        NAME(DRM_FORMAT_GR88);
+        NAME(DRM_FORMAT_RG1616);
+        NAME(DRM_FORMAT_GR1616);
+        NAME(DRM_FORMAT_RGB332);
+        NAME(DRM_FORMAT_BGR233);
+        NAME(DRM_FORMAT_XRGB4444);
+        NAME(DRM_FORMAT_XBGR4444);
+        NAME(DRM_FORMAT_RGBX4444);
+        NAME(DRM_FORMAT_BGRX4444);
+        NAME(DRM_FORMAT_ARGB4444);
+        NAME(DRM_FORMAT_ABGR4444);
+        NAME(DRM_FORMAT_RGBA4444);
+        NAME(DRM_FORMAT_BGRA4444);
+        NAME(DRM_FORMAT_XRGB1555);
+        NAME(DRM_FORMAT_XBGR1555);
+        NAME(DRM_FORMAT_RGBX5551);
+        NAME(DRM_FORMAT_BGRX5551);
+        NAME(DRM_FORMAT_ARGB1555);
+        NAME(DRM_FORMAT_ABGR1555);
+        NAME(DRM_FORMAT_RGBA5551);
+        NAME(DRM_FORMAT_BGRA5551);
+        NAME(DRM_FORMAT_RGB565);
+        NAME(DRM_FORMAT_BGR565);
+        NAME(DRM_FORMAT_RGB888);
+        NAME(DRM_FORMAT_BGR888);
+        NAME(DRM_FORMAT_XRGB8888);
+        NAME(DRM_FORMAT_XBGR8888);
+        NAME(DRM_FORMAT_RGBX8888);
+        NAME(DRM_FORMAT_BGRX8888);
+        NAME(DRM_FORMAT_ARGB8888);
+        NAME(DRM_FORMAT_ABGR8888);
+        NAME(DRM_FORMAT_RGBA8888);
+        NAME(DRM_FORMAT_BGRA8888);
+        NAME(DRM_FORMAT_XRGB2101010);
+        NAME(DRM_FORMAT_XBGR2101010);
+        NAME(DRM_FORMAT_RGBX1010102);
+        NAME(DRM_FORMAT_BGRX1010102);
+        NAME(DRM_FORMAT_ARGB2101010);
+        NAME(DRM_FORMAT_ABGR2101010);
+        NAME(DRM_FORMAT_RGBA1010102);
+        NAME(DRM_FORMAT_BGRA1010102);
+        NAME(DRM_FORMAT_RGB161616);
+        NAME(DRM_FORMAT_BGR161616);
+        NAME(DRM_FORMAT_XRGB16161616);
+        NAME(DRM_FORMAT_XBGR16161616);
+        NAME(DRM_FORMAT_ARGB16161616);
+        NAME(DRM_FORMAT_ABGR16161616);
+        NAME(DRM_FORMAT_XRGB16161616F);
+        NAME(DRM_FORMAT_XBGR16161616F);
+        NAME(DRM_FORMAT_ARGB16161616F);
+        NAME(DRM_FORMAT_ABGR16161616F);
+        NAME(DRM_FORMAT_R16F);
+        NAME(DRM_FORMAT_GR1616F);
+        NAME(DRM_FORMAT_BGR161616F);
+        NAME(DRM_FORMAT_R32F);
+        NAME(DRM_FORMAT_GR3232F);
+        NAME(DRM_FORMAT_BGR323232F);
+        NAME(DRM_FORMAT_ABGR32323232F);
+        NAME(DRM_FORMAT_AXBXGXRX106106106106);
+        NAME(DRM_FORMAT_YUYV);
+        NAME(DRM_FORMAT_YVYU);
+        NAME(DRM_FORMAT_UYVY);
+        NAME(DRM_FORMAT_VYUY);
+        NAME(DRM_FORMAT_AYUV);
+        NAME(DRM_FORMAT_AVUY8888);
+        NAME(DRM_FORMAT_XYUV8888);
+        NAME(DRM_FORMAT_XVUY8888);
+        NAME(DRM_FORMAT_VUY888);
+        NAME(DRM_FORMAT_VUY101010);
+        NAME(DRM_FORMAT_Y210);
+        NAME(DRM_FORMAT_Y212);
+        NAME(DRM_FORMAT_Y216);
+        NAME(DRM_FORMAT_Y410);
+        NAME(DRM_FORMAT_Y412);
+        NAME(DRM_FORMAT_Y416);
+        NAME(DRM_FORMAT_XVYU2101010);
+        NAME(DRM_FORMAT_XVYU12_16161616);
+        NAME(DRM_FORMAT_XVYU16161616);
+        NAME(DRM_FORMAT_Y0L0);
+        NAME(DRM_FORMAT_X0L0);
+        NAME(DRM_FORMAT_Y0L2);
+        NAME(DRM_FORMAT_X0L2);
+        NAME(DRM_FORMAT_YUV420_8BIT);
+        NAME(DRM_FORMAT_YUV420_10BIT);
+        NAME(DRM_FORMAT_XRGB8888_A8);
+        NAME(DRM_FORMAT_XBGR8888_A8);
+        NAME(DRM_FORMAT_RGBX8888_A8);
+        NAME(DRM_FORMAT_BGRX8888_A8);
+        NAME(DRM_FORMAT_RGB888_A8);
+        NAME(DRM_FORMAT_BGR888_A8);
+        NAME(DRM_FORMAT_RGB565_A8);
+        NAME(DRM_FORMAT_BGR565_A8);
+        NAME(DRM_FORMAT_NV12);
+        NAME(DRM_FORMAT_NV21);
+        NAME(DRM_FORMAT_NV16);
+        NAME(DRM_FORMAT_NV61);
+        NAME(DRM_FORMAT_NV24);
+        NAME(DRM_FORMAT_NV42);
+        NAME(DRM_FORMAT_NV15);
+        NAME(DRM_FORMAT_NV20);
+        NAME(DRM_FORMAT_NV30);
+        NAME(DRM_FORMAT_P210);
+        NAME(DRM_FORMAT_P010);
+        NAME(DRM_FORMAT_P012);
+        NAME(DRM_FORMAT_P016);
+        NAME(DRM_FORMAT_P030);
+        NAME(DRM_FORMAT_Q410);
+        NAME(DRM_FORMAT_Q401);
+        NAME(DRM_FORMAT_S010);
+        NAME(DRM_FORMAT_S210);
+        NAME(DRM_FORMAT_S410);
+        NAME(DRM_FORMAT_S012);
+        NAME(DRM_FORMAT_S212);
+        NAME(DRM_FORMAT_S412);
+        NAME(DRM_FORMAT_S016);
+        NAME(DRM_FORMAT_S216);
+        NAME(DRM_FORMAT_S416);
+        NAME(DRM_FORMAT_YUV410);
+        NAME(DRM_FORMAT_YVU410);
+        NAME(DRM_FORMAT_YUV411);
+        NAME(DRM_FORMAT_YVU411);
+        NAME(DRM_FORMAT_YUV420);
+        NAME(DRM_FORMAT_YVU420);
+        NAME(DRM_FORMAT_YUV422);
+        NAME(DRM_FORMAT_YVU422);
+        NAME(DRM_FORMAT_YUV444);
+        NAME(DRM_FORMAT_YVU444);
+
+        default:
+        {
+            ShTemporaryMemory temp_memory = sh_begin_temporary_memory(thread_context, 1, &allocator);
+
+            ShStringBuilder sb;
+            sh_string_builder_init(&sb, temp_memory.allocator);
+
+            sh_string_builder_append_string(&sb, ShStringLiteral("<unknown-drm-format: "));
+            sh_string_builder_append_u8(&sb, (uint8_t) format);
+            sh_string_builder_append_u8(&sb, (uint8_t) (format >>  8));
+            sh_string_builder_append_u8(&sb, (uint8_t) (format >> 16));
+            sh_string_builder_append_u8(&sb, (uint8_t) (format >> 24));
+            sh_string_builder_append_string(&sb, ShStringLiteral(">"));
+
+            result = sh_string_builder_to_string(&sb, allocator);
+
+            sh_end_temporary_memory(temp_memory);
+        } break;
+    }
+
+#undef NAME
+
+    return result;
+}
+
+static ShString
+drm_format_modifier_to_string(ShThreadContext *thread_context, ShAllocator allocator, uint64_t modifier)
+{
+    ShTemporaryMemory temp_memory = sh_begin_temporary_memory(thread_context, 1, &allocator);
+
+    ShStringBuilder sb;
+    sh_string_builder_init(&sb, temp_memory.allocator);
+
+#define NAME(name) case name: sh_string_builder_append_number(&sb, modifier, 16, '0', 16, true); sh_string_builder_append_string(&sb, ShStringLiteral(" = " #name)); break
+
+    switch (modifier)
+    {
+        NAME(DRM_FORMAT_MOD_INVALID);
+        NAME(DRM_FORMAT_MOD_LINEAR);
+
+        NAME(I915_FORMAT_MOD_X_TILED);
+        NAME(I915_FORMAT_MOD_Y_TILED);
+        NAME(I915_FORMAT_MOD_Yf_TILED);
+        NAME(I915_FORMAT_MOD_Y_TILED_CCS);
+        NAME(I915_FORMAT_MOD_Yf_TILED_CCS);
+        NAME(I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS);
+        NAME(I915_FORMAT_MOD_Y_TILED_GEN12_MC_CCS);
+        NAME(I915_FORMAT_MOD_Y_TILED_GEN12_RC_CCS_CC);
+        NAME(I915_FORMAT_MOD_4_TILED);
+        NAME(I915_FORMAT_MOD_4_TILED_DG2_RC_CCS);
+        NAME(I915_FORMAT_MOD_4_TILED_DG2_MC_CCS);
+        NAME(I915_FORMAT_MOD_4_TILED_DG2_RC_CCS_CC);
+        NAME(I915_FORMAT_MOD_4_TILED_MTL_RC_CCS);
+        NAME(I915_FORMAT_MOD_4_TILED_MTL_MC_CCS);
+        NAME(I915_FORMAT_MOD_4_TILED_MTL_RC_CCS_CC);
+        NAME(I915_FORMAT_MOD_4_TILED_LNL_CCS);
+        NAME(I915_FORMAT_MOD_4_TILED_BMG_CCS);
+
+        NAME(DRM_FORMAT_MOD_SAMSUNG_64_32_TILE);
+        NAME(DRM_FORMAT_MOD_SAMSUNG_16_16_TILE);
+
+        NAME(DRM_FORMAT_MOD_QCOM_COMPRESSED);
+        NAME(DRM_FORMAT_MOD_QCOM_TILED3);
+        NAME(DRM_FORMAT_MOD_QCOM_TILED2);
+        NAME(DRM_FORMAT_MOD_QCOM_TIGHT);
+        NAME(DRM_FORMAT_MOD_QCOM_TILE);
+        NAME(DRM_FORMAT_MOD_QTI_SECURE);
+
+        NAME(DRM_FORMAT_MOD_MTK_16L_32S_TILE);
+
+        NAME(DRM_FORMAT_MOD_APPLE_GPU_TILED);
+        NAME(DRM_FORMAT_MOD_APPLE_GPU_TILED_COMPRESSED);
+
+        default:
+        {
+            sh_string_builder_append_number(&sb, modifier, 16, '0', 16, true);
+            sh_string_builder_append_string(&sb, ShStringLiteral(" = <unknown>"));
+        } break;
+    }
+
+#undef NAME
+
+    ShString result = sh_string_builder_to_string(&sb, allocator);
+
+    sh_end_temporary_memory(temp_memory);
+
+    return result;
+}
+
+static void
+wayland_dmabuf_format(void *data, struct zwp_linux_dmabuf_v1 *dmabuf, uint32_t format)
+{
+    (void) data;
+    (void) dmabuf;
+    (void) format;
+}
+
+static void
+wayland_dmabuf_modifier(void *data, struct zwp_linux_dmabuf_v1 *dmabuf, uint32_t format, uint32_t modifier_hi, uint32_t modifier_lo)
+{
+    WaylandContext *wayland_context = (WaylandContext *) data;
+
+    WaylandDmaBufFormat *dmabuf_format = sh_array_append(wayland_context->dmabuf_formats);
+
+    dmabuf_format->format   = format;
+    dmabuf_format->modifier = ((uint64_t) modifier_hi << 32) | (uint64_t) modifier_lo;
+}
+
+static const struct zwp_linux_dmabuf_v1_listener wayland_dmabuf_listener = {
+    .format   = wayland_dmabuf_format,
+    .modifier = wayland_dmabuf_modifier,
+};
+
+static void
+wayland_registry_global(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version)
+{
+    WaylandContext *wayland_context = (WaylandContext *) data;
+
+    ShString interface_name = ShCString(interface);
+
+    WaylandInterface *interf = sh_array_append(wayland_context->interfaces);
+
+    interf->name = sh_copy_string(wayland_context->allocator, interface_name);
+    interf->version = version;
+
+    if (sh_string_equal(interface_name, ShCString(zwp_linux_dmabuf_v1_interface.name)))
+    {
+        if (version >= 3)
+        {
+            struct zwp_linux_dmabuf_v1 *dmabuf = (struct zwp_linux_dmabuf_v1 *) wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, 3);
+            zwp_linux_dmabuf_v1_add_listener(dmabuf, &wayland_dmabuf_listener, wayland_context);
+        }
+    }
+}
+
+static void
+wayland_registry_global_remove(void *data, struct wl_registry *registry, uint32_t name)
+{
+}
+
+static const struct wl_registry_listener wayland_registry_listener = {
+    .global        = wayland_registry_global,
+    .global_remove = wayland_registry_global_remove,
+};
+
+static void *
+begin_wayland_context(ShAllocator allocator)
+{
+    WaylandContext *wayland_context = sh_alloc_type(allocator, WaylandContext);
+
+    wayland_context->allocator = allocator;
+    wayland_context->display = wl_display_connect(NULL);
+
+    if (!wayland_context->display)
+    {
+        sh_free(allocator, wayland_context);
+        return NULL;
+    }
+
+    wayland_context->interfaces = NULL;
+    sh_array_init(wayland_context->interfaces, 16, allocator);
+
+    wayland_context->dmabuf_formats = NULL;
+    sh_array_init(wayland_context->dmabuf_formats, 16, allocator);
+
+    struct wl_registry *registry = wl_display_get_registry(wayland_context->display);
+    wl_registry_add_listener(registry, &wayland_registry_listener, wayland_context);
+
+    wl_display_roundtrip(wayland_context->display);
+    wl_display_roundtrip(wayland_context->display);
+
+    return wayland_context;
+}
+
+static void
+end_wayland_context(ShAllocator allocator, void *context)
+{
+    WaylandContext *wayland_context = (WaylandContext *) context;
+
+    wl_display_disconnect(wayland_context->display);
+
+    sh_array_free(wayland_context->interfaces);
+    sh_free(allocator, wayland_context);
+}
+
+static Node *
+wayland_command_interfaces(ShThreadContext *thread_context, ShAllocator allocator, void *context, ShString command, Node *parent)
+{
+    WaylandContext *wayland_context = (WaylandContext *) context;
+
+    Node *interfaces_node = push_array(allocator, parent, ShStringLiteral("interfaces"), false);
+
+    for (usize i = 0; i < sh_array_count(wayland_context->interfaces); i += 1)
+    {
+        WaylandInterface *interf = wayland_context->interfaces + i;
+
+        Node *interface_node = push_object(allocator, interfaces_node, ShStringLiteral("__interface__"), true);
+
+        push_string(allocator, interface_node, ShStringLiteral("name"), sh_copy_string(allocator, interf->name));
+        push_integer(allocator, interface_node, ShStringLiteral("version"), interf->version);
+    }
+}
+
+static Node *
+wayland_command_dmabuf_formats(ShThreadContext *thread_context, ShAllocator allocator, void *context, ShString command, Node *parent)
+{
+    WaylandContext *wayland_context = (WaylandContext *) context;
+
+    Node *dmabuf_formats_node = push_array(allocator, parent, ShStringLiteral("dmabuf_formats"), false);
+
+    for (usize i = 0; i < sh_array_count(wayland_context->dmabuf_formats); i += 1)
+    {
+        WaylandDmaBufFormat *dmabuf_format = wayland_context->dmabuf_formats + i;
+
+        Node *dmabuf_format_node = push_object(allocator, dmabuf_formats_node, ShStringLiteral("__dmabuf_format__"), true);
+
+        push_string(allocator, dmabuf_format_node, ShStringLiteral("format"), drm_format_to_string(thread_context, allocator, dmabuf_format->format));
+        push_string(allocator, dmabuf_format_node, ShStringLiteral("modifier"), drm_format_modifier_to_string(thread_context, allocator, dmabuf_format->modifier));
+    }
+}
+
+static InfoCommand wayland_commands[] = {
+    { ShStringConstant("interfaces")    , wayland_command_interfaces     },
+    { ShStringConstant("dmabuf_formats"), wayland_command_dmabuf_formats },
+};
+
+static Node *
+info_command_wayland(ShThreadContext *thread_context, ShAllocator allocator, void *context, ShString command, Node *parent)
+{
+    return handle_sub_command(thread_context, allocator, command, ShStringLiteral("wayland"),
+                              parent, ShArrayCount(wayland_commands), wayland_commands,
+                              begin_wayland_context, end_wayland_context);
+}
+
+#endif // SH_PLATFORM_LINUX
+
 static InfoCommand info_commands[] = {
 #if SH_PLATFORM_MACOS
     { ShStringConstant("metal") , info_command_metal  },
 #endif
 #if SH_PLATFORM_ANDROID || SH_PLATFORM_WINDOWS || SH_PLATFORM_LINUX
     { ShStringConstant("vulkan"), info_command_vulkan },
+#endif
+#if SH_PLATFORM_LINUX
+    { ShStringConstant("wayland"), info_command_wayland },
 #endif
 };
 

@@ -57,6 +57,10 @@ C_MAKE_ENTRY()
             {
                 command_append(&cmd, "-framework", "Foundation", "-framework", "Metal");
             }
+            else if (get_target_platform() == CMakePlatformLinux)
+            {
+                command_append(&cmd, "-lwayland-client");
+            }
 
             c_make_log(LogLevelInfo, "compile 'system_info'\n");
             command_run_and_reset(&cmd);
