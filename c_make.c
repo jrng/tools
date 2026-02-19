@@ -64,6 +64,17 @@ C_MAKE_ENTRY()
 
             c_make_log(LogLevelInfo, "compile 'system_info'\n");
             command_run_and_reset(&cmd);
+
+            command_append(&cmd, target_c_compiler);
+            command_append_command_line(&cmd, get_target_c_flags());
+            command_append_default_compiler_flags(&cmd, get_build_type());
+
+            command_append_output_executable(&cmd, c_string_path_concat(get_build_path(), "bdf2h"), get_target_platform());
+            command_append(&cmd, c_string_path_concat(get_source_path(), "src", "bdf2h.c"));
+            command_append_default_linker_flags(&cmd, get_target_architecture());
+
+            c_make_log(LogLevelInfo, "compile 'bdf2h'\n");
+            command_run_and_reset(&cmd);
         } break;
 
         case TargetInstall:
