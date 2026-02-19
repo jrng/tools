@@ -338,11 +338,11 @@ vk_version_to_string(ShThreadContext *thread_context, ShAllocator allocator, uin
 
     ShStringBuilder string_builder;
     sh_string_builder_init(&string_builder, temp_memory.allocator);
-    sh_string_builder_append_number(&string_builder, VK_API_VERSION_MAJOR(version), 0, 0, 10, false);
+    sh_string_builder_append_unsigned_number(&string_builder, VK_API_VERSION_MAJOR(version), 0, 0, 10, false);
     sh_string_builder_append_u8(&string_builder, '.');
-    sh_string_builder_append_number(&string_builder, VK_API_VERSION_MINOR(version), 0, 0, 10, false);
+    sh_string_builder_append_unsigned_number(&string_builder, VK_API_VERSION_MINOR(version), 0, 0, 10, false);
     sh_string_builder_append_u8(&string_builder, '.');
-    sh_string_builder_append_number(&string_builder, VK_API_VERSION_PATCH(version), 0, 0, 10, false);
+    sh_string_builder_append_unsigned_number(&string_builder, VK_API_VERSION_PATCH(version), 0, 0, 10, false);
     ShString result = sh_string_builder_to_string(&string_builder, allocator);
 
     sh_end_temporary_memory(temp_memory);
@@ -372,7 +372,7 @@ vk_physical_device_type_to_string(ShThreadContext *thread_context, ShAllocator a
             ShStringBuilder string_builder;
             sh_string_builder_init(&string_builder, temp_memory.allocator);
             sh_string_builder_append_string(&string_builder, ShStringLiteral("<unknown_device_type: "));
-            sh_string_builder_append_number(&string_builder, device_type, 0, 0, 10, false);
+            sh_string_builder_append_unsigned_number(&string_builder, device_type, 0, 0, 10, false);
             sh_string_builder_append_string(&string_builder, ShStringLiteral(">"));
             result = sh_string_builder_to_string(&string_builder, allocator);
         } break;
@@ -926,7 +926,7 @@ drm_format_modifier_to_string(ShThreadContext *thread_context, ShAllocator alloc
     ShStringBuilder sb;
     sh_string_builder_init(&sb, temp_memory.allocator);
 
-#define NAME(name) case name: sh_string_builder_append_number(&sb, modifier, 16, '0', 16, true); sh_string_builder_append_string(&sb, ShStringLiteral(" = " #name)); break
+#define NAME(name) case name: sh_string_builder_append_unsigned_number(&sb, modifier, 16, '0', 16, true); sh_string_builder_append_string(&sb, ShStringLiteral(" = " #name)); break
 
     switch (modifier)
     {
@@ -968,7 +968,7 @@ drm_format_modifier_to_string(ShThreadContext *thread_context, ShAllocator alloc
 
         default:
         {
-            sh_string_builder_append_number(&sb, modifier, 16, '0', 16, true);
+            sh_string_builder_append_unsigned_number(&sb, modifier, 16, '0', 16, true);
             sh_string_builder_append_string(&sb, ShStringLiteral(" = <unknown>"));
         } break;
     }
