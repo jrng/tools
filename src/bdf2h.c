@@ -84,7 +84,7 @@ c_default_allocator_func(void *allocator_data, ShAllocatorAction action, usize o
 static void
 print_help(const char *program_name)
 {
-    fprintf(stderr, "usage: %s [--help | -h] [-o <output-header-file>] <input-bdf-file>\n", program_name);
+    fprintf(stderr, "usage: %s [--help | -h] [--prefix <prefix> | -p <prefix>] [-o <output-header-file>] <input-bdf-file>\n", program_name);
 }
 
 int main(int argument_count, char **arguments)
@@ -95,6 +95,7 @@ int main(int argument_count, char **arguments)
         return 0;
     }
 
+    ShString prefix = ShStringEmpty;
     ShString input_filename = ShStringEmpty;
     ShString output_filename = ShStringEmpty;
 
@@ -116,6 +117,15 @@ int main(int argument_count, char **arguments)
                 output_filename = ShCString(arguments[i]);
             }
         }
+        else if (sh_string_equal(argument, ShStringLiteral("--prefix")) ||
+                 sh_string_equal(argument, ShStringLiteral("-p")))
+        {
+            if ((i + 1) < argument_count)
+            {
+                i += 1;
+                prefix = ShCString(arguments[i]);
+            }
+        }
         else
         {
             input_filename = argument;
@@ -126,11 +136,6 @@ int main(int argument_count, char **arguments)
     {
         print_help(arguments[0]);
         return 0;
-    }
-
-    if (output_filename.count == 0)
-    {
-        output_filename = ShStringLiteral("font.h");
     }
 
     ShAllocator allocator;
@@ -147,8 +152,11 @@ int main(int argument_count, char **arguments)
         return -1;
     }
 
-    int64_t size = 0;
+    uint32_t size = 0;
     int64_t ascent, descent;
+
+    ShString font_family = ShStringEmpty;
+    ShString font_weight = ShStringEmpty;
 
     bool has_ascent = false;
     bool has_descent = false;
@@ -184,7 +192,12 @@ int main(int argument_count, char **arguments)
         // SIZE PointSize Xres Yres
         if (sh_string_equal(keyword, ShStringLiteral("SIZE")))
         {
-            sh_parse_integer(&line, &size);
+            int64_t value;
+
+            if (sh_parse_integer(&line, &value) && (value >= 0) && (value <= 0xFFFFFFFF))
+            {
+                size = (uint32_t) value;
+            }
         }
         // STARTPROPERTIES n
         else if (sh_string_equal(keyword, ShStringLiteral("STARTPROPERTIES")))
@@ -209,6 +222,50 @@ int main(int argument_count, char **arguments)
                     if (sh_parse_integer(&line, &descent))
                     {
                         has_descent = true;
+                    }
+                }
+                // FAMILY_NAME font_family - X Window extension
+                else if (sh_string_equal(keyword, ShStringLiteral("FAMILY_NAME")))
+                {
+                    if (sh_string_starts_with(line, ShStringLiteral("\"")))
+                    {
+                        line.count -= 1;
+                        line.data  += 1;
+
+                        size_t index = 0;
+
+                        while ((index < line.count) && (line.data[index] != '"'))
+                        {
+                            index += 1;
+                        }
+
+                        // TODO: handle spaces in family name
+                        font_family.count = index;
+                        font_family.data = line.data;
+
+                        font_family = sh_string_ascii_to_lower(allocator, font_family);
+                    }
+                }
+                // WEIGHT_NAME font_weight - X Window extension
+                else if (sh_string_equal(keyword, ShStringLiteral("WEIGHT_NAME")))
+                {
+                    if (sh_string_starts_with(line, ShStringLiteral("\"")))
+                    {
+                        line.count -= 1;
+                        line.data  += 1;
+
+                        size_t index = 0;
+
+                        while ((index < line.count) && (line.data[index] != '"'))
+                        {
+                            index += 1;
+                        }
+
+                        // TODO: handle spaces in weight name
+                        font_weight.count = index;
+                        font_weight.data = line.data;
+
+                        font_weight = sh_string_ascii_to_lower(allocator, font_weight);
                     }
                 }
                 else if (sh_string_equal(keyword, ShStringLiteral("ENDPROPERTIES")))
@@ -382,16 +439,28 @@ int main(int argument_count, char **arguments)
         }
     }
 
+    if (prefix.count == 0)
+    {
+        prefix = sh_string_formated(thread_context, allocator, ShStringLiteral("%" ShStringFmt "_%u_%" ShStringFmt "_"), ShStringArg(font_family), size, ShStringArg(font_weight));
+    }
+
+    if (output_filename.count == 0)
+    {
+        output_filename = sh_string_formated(thread_context, allocator, ShStringLiteral("%" ShStringFmt "_%u_%" ShStringFmt ".h"), ShStringArg(font_family), size, ShStringArg(font_weight));
+    }
+
     ShStringBuilder sb;
     sh_string_builder_init(&sb, allocator);
 
     ShStringBuilder pbm;
     sh_string_builder_init(&pbm, allocator);
 
+    sh_string_builder_append_string(&sb, ShStringLiteral("#ifndef FONT_STRUCTS\n#define FONT_STRUCTS\n\n"));
     sh_string_builder_append_string(&sb, ShStringLiteral("typedef struct Glyph {\n    uint32_t codepoint;\n    uint16_t x_advance;\n    int16_t x_offset;\n    int16_t y_offset;\n    uint16_t bound_width;\n    uint16_t bound_height;\n    uint16_t u;\n    uint16_t v;\n} Glyph;\n\n"));
     sh_string_builder_append_string(&sb, ShStringLiteral("typedef struct Font {\n    uint16_t size;\n    int16_t ascent;\n    int16_t descent;\n    uint32_t glyph_count;\n    Glyph *glyphs;\n    uint32_t texture_width;\n    uint32_t texture_height;\n    uint32_t *texture_data;\n} Font;\n\n"));
+    sh_string_builder_append_string(&sb, ShStringLiteral("#endif\n\n"));
 
-    sh_string_builder_append_string(&sb, ShStringLiteral("uint32_t texture_data[] = {\n"));
+    sh_string_builder_append_formated(&sb, ShStringLiteral("uint32_t %" ShStringFmt "texture_data[] = {\n"), ShStringArg(prefix));
 
     sh_string_builder_append_formated(&pbm, ShStringLiteral("P1\n%u %u\n"), texture.width, texture.height);
 
@@ -423,7 +492,7 @@ int main(int argument_count, char **arguments)
 
     sh_string_builder_append_string(&sb, ShStringLiteral("};\n\n"));
 
-    sh_string_builder_append_string(&sb, ShStringLiteral("Glyph glyphs[] = {"));
+    sh_string_builder_append_formated(&sb, ShStringLiteral("Glyph %" ShStringFmt "glyphs[] = {"), ShStringArg(prefix));
 
     for (size_t i = 0; i < sh_array_count(glyphs); i += 1)
     {
@@ -442,8 +511,9 @@ int main(int argument_count, char **arguments)
 
     sh_string_builder_append_string(&sb, ShStringLiteral("\n};\n\n"));
 
-    sh_string_builder_append_formated(&sb, ShStringLiteral("Font font = { %u, %d, %d, %u, glyphs, %u, %u, texture_data };\n"),
-                                      (uint16_t) size, (int16_t) ascent, (int16_t) descent, sh_array_count(glyphs), texture.width, texture.height);
+    sh_string_builder_append_formated(&sb, ShStringLiteral("Font %" ShStringFmt "font = { %u, %d, %d, %u, %" ShStringFmt "glyphs, %u, %u, %" ShStringFmt "texture_data };\n"),
+                                      ShStringArg(prefix), (uint16_t) size, (int16_t) ascent, (int16_t) descent,
+                                      sh_array_count(glyphs), ShStringArg(prefix), texture.width, texture.height, ShStringArg(prefix));
 
     sh_write_entire_file(thread_context, output_filename, &sb);
     sh_write_entire_file(thread_context, ShStringLiteral("font.pbm"), &pbm);

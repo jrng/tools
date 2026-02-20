@@ -220,6 +220,9 @@ SH_BASE_DEF ShString sh_string_split_left_on_char(ShString *str, uint8_t c);
 SH_BASE_DEF ShString sh_string_split_right(ShString *str, ShString split);
 SH_BASE_DEF ShString sh_string_split_right_on_char(ShString *str, uint8_t c);
 
+SH_BASE_DEF ShString sh_string_ascii_to_lower(ShAllocator allocator, ShString str);
+SH_BASE_DEF ShString sh_string_ascii_to_upper(ShAllocator allocator, ShString str);
+
 SH_BASE_DEF bool sh_parse_integer(ShString *str, int64_t *value);
 
 SH_BASE_DEF usize sh_c_string_get_length(const char *str);
@@ -771,6 +774,64 @@ sh_string_split_right_on_char(ShString *str, uint8_t c)
     if (index > 0)
     {
         str->count -= 1;
+    }
+
+    return result;
+}
+
+SH_BASE_DEF ShString
+sh_string_ascii_to_lower(ShAllocator allocator, ShString str)
+{
+    ShString result = ShStringEmpty;
+
+    if (str.count > 0)
+    {
+        result.count = str.count;
+        result.data  = sh_alloc_array(allocator, uint8_t, result.count);
+
+        uint8_t *src = str.data;
+        uint8_t *dst = result.data;
+
+        while (str.count--)
+        {
+            uint8_t c = *src++;
+
+            if ((c >= 'A') && (c <= 'Z'))
+            {
+                c |= 0x20;
+            }
+
+            *dst++ = c;
+        }
+    }
+
+    return result;
+}
+
+SH_BASE_DEF ShString
+sh_string_ascii_to_upper(ShAllocator allocator, ShString str)
+{
+    ShString result = ShStringEmpty;
+
+    if (str.count > 0)
+    {
+        result.count = str.count;
+        result.data  = sh_alloc_array(allocator, uint8_t, result.count);
+
+        uint8_t *src = str.data;
+        uint8_t *dst = result.data;
+
+        while (str.count--)
+        {
+            uint8_t c = *src++;
+
+            if ((c >= 'a') && (c <= 'z'))
+            {
+                c &= ~0x20;
+            }
+
+            *dst++ = c;
+        }
     }
 
     return result;
