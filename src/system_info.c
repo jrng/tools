@@ -334,28 +334,14 @@ typedef struct
 static inline ShString
 vk_version_to_string(ShThreadContext *thread_context, ShAllocator allocator, uint32_t version)
 {
-    ShTemporaryMemory temp_memory = sh_begin_temporary_memory(thread_context, 1, &allocator);
-
-    ShStringBuilder string_builder;
-    sh_string_builder_init(&string_builder, temp_memory.allocator);
-    sh_string_builder_append_unsigned_number(&string_builder, VK_API_VERSION_MAJOR(version), 0, 0, 10, false);
-    sh_string_builder_append_u8(&string_builder, '.');
-    sh_string_builder_append_unsigned_number(&string_builder, VK_API_VERSION_MINOR(version), 0, 0, 10, false);
-    sh_string_builder_append_u8(&string_builder, '.');
-    sh_string_builder_append_unsigned_number(&string_builder, VK_API_VERSION_PATCH(version), 0, 0, 10, false);
-    ShString result = sh_string_builder_to_string(&string_builder, allocator);
-
-    sh_end_temporary_memory(temp_memory);
-
-    return result;
+    return sh_string_formated(thread_context, allocator, ShStringLiteral("%u.%u.%u"),
+                              VK_API_VERSION_MAJOR(version), VK_API_VERSION_MINOR(version), VK_API_VERSION_PATCH(version));
 }
 
 static inline ShString
 vk_physical_device_type_to_string(ShThreadContext *thread_context, ShAllocator allocator, VkPhysicalDeviceType device_type)
 {
     ShString result = ShStringEmpty;
-
-    ShTemporaryMemory temp_memory = sh_begin_temporary_memory(thread_context, 1, &allocator);
 
 #  define NAME(name) case name: result = ShStringLiteral(#name); break
 
@@ -369,18 +355,11 @@ vk_physical_device_type_to_string(ShThreadContext *thread_context, ShAllocator a
 
         default:
         {
-            ShStringBuilder string_builder;
-            sh_string_builder_init(&string_builder, temp_memory.allocator);
-            sh_string_builder_append_string(&string_builder, ShStringLiteral("<unknown_device_type: "));
-            sh_string_builder_append_unsigned_number(&string_builder, device_type, 0, 0, 10, false);
-            sh_string_builder_append_string(&string_builder, ShStringLiteral(">"));
-            result = sh_string_builder_to_string(&string_builder, allocator);
+            result = sh_string_formated(thread_context, allocator, ShStringLiteral("<unknown_device_type: %u>"), device_type);
         } break;
     }
 
 #  undef NAME
-
-    sh_end_temporary_memory(temp_memory);
 
     return result;
 }
@@ -495,15 +474,7 @@ vulkan_command_version(ShThreadContext *thread_context, ShAllocator allocator, v
     uint32_t version = VK_API_VERSION_1_0;
     vulkan_context->vkEnumerateInstanceVersion(&version);
 
-    char buf[16];
-    size_t len = snprintf(buf, sizeof(buf), "%u.%u.%u", VK_API_VERSION_MAJOR(version),
-                          VK_API_VERSION_MINOR(version), VK_API_VERSION_PATCH(version));
-
-    ShString version_str;
-    version_str.count = len;
-    version_str.data  = (uint8_t *) buf;
-
-    return push_string(allocator, parent, ShStringLiteral("version"), sh_copy_string(allocator, version_str));
+    return push_string(allocator, parent, ShStringLiteral("version"), vk_version_to_string(thread_context, allocator, version));
 }
 
 static Node *
@@ -895,21 +866,8 @@ drm_format_to_string(ShThreadContext *thread_context, ShAllocator allocator, uin
 
         default:
         {
-            ShTemporaryMemory temp_memory = sh_begin_temporary_memory(thread_context, 1, &allocator);
-
-            ShStringBuilder sb;
-            sh_string_builder_init(&sb, temp_memory.allocator);
-
-            sh_string_builder_append_string(&sb, ShStringLiteral("<unknown-drm-format: "));
-            sh_string_builder_append_u8(&sb, (uint8_t) format);
-            sh_string_builder_append_u8(&sb, (uint8_t) (format >>  8));
-            sh_string_builder_append_u8(&sb, (uint8_t) (format >> 16));
-            sh_string_builder_append_u8(&sb, (uint8_t) (format >> 24));
-            sh_string_builder_append_string(&sb, ShStringLiteral(">"));
-
-            result = sh_string_builder_to_string(&sb, allocator);
-
-            sh_end_temporary_memory(temp_memory);
+            result = sh_string_formated(thread_context, allocator, ShStringLiteral("<unknown-drm-format: %c%c%c%c>"),
+                                        (uint8_t) format, (uint8_t) (format >>  8), (uint8_t) (format >> 16), (uint8_t) (format >> 24));
         } break;
     }
 
