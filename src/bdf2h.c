@@ -1,9 +1,9 @@
 #define SH_BASE_IMPLEMENTATION
-#include "sh_base.h"
+#include "libs/sh_base.h"
 #define SH_STRING_BUILDER_IMPLEMENTATION
-#include "sh_string_builder.h"
+#include "libs/sh_string_builder.h"
 #define SH_PLATFORM_IMPLEMENTATION
-#include "sh_platform.h"
+#include "libs/sh_platform.h"
 
 #include <stdio.h>
 #include <stdlib.h>

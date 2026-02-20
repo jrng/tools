@@ -1,5 +1,5 @@
 #define C_MAKE_IMPLEMENTATION
-#include "src/c_make.h"
+#include "src/libs/c_make.h"
 
 C_MAKE_ENTRY()
 {
