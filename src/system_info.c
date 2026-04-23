@@ -383,7 +383,13 @@ begin_vulkan_context(ShAllocator allocator)
 #    define CLOSE_LIBRARY_HANDLE(handle) FreeLibrary(handle)
 
 #  elif SH_PLATFORM_UNIX
+#    if SH_PLATFORM_ANDROID
+    vulkan_context->library_handle = dlopen("libvulkan.so", RTLD_NOW);
+#    elif SH_PLATFORM_LINUX
     vulkan_context->library_handle = dlopen("libvulkan.so.1", RTLD_NOW);
+#    elif SH_PLATFORM_MACOS
+    vulkan_context->library_handle = dlopen("libvulkan.1.dylib", RTLD_NOW);
+#    endif
 
     if (!vulkan_context->library_handle)
     {
