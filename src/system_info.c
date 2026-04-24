@@ -305,11 +305,15 @@ info_command_metal(ShThreadContext *thread_context, ShAllocator allocator, void 
     proc(VK_NULL_HANDLE, vkEnumerateInstanceLayerProperties)     \
     proc(VK_NULL_HANDLE, vkEnumerateInstanceExtensionProperties)
 
-#  define vulkan_instance_functions(instance, proc)              \
+#  define vulkan_instance_1_0_functions(instance, proc)          \
     proc(instance, vkDestroyInstance)                            \
     proc(instance, vkEnumeratePhysicalDevices)                   \
     proc(instance, vkGetPhysicalDeviceProperties)                \
-    proc(instance, vkEnumerateDeviceExtensionProperties)
+    proc(instance, vkEnumerateDeviceExtensionProperties)         \
+    proc(instance, vkGetPhysicalDeviceMemoryProperties)
+
+#  define vulkan_instance_1_1_functions(instance, proc)          \
+    proc(instance, vkGetPhysicalDeviceFeatures2)
 
 typedef struct
 {
@@ -319,6 +323,8 @@ typedef struct
     void *library_handle;
 #  endif
 
+    uint32_t instance_version;
+
     VkInstance instance;
 
     PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
@@ -326,7 +332,8 @@ typedef struct
 #  define vulkan_declare_function(instance, name) PFN_##name name;
 
     vulkan_global_functions(vulkan_declare_function)
-    vulkan_instance_functions(VK_NULL_HANDLE, vulkan_declare_function)
+    vulkan_instance_1_0_functions(VK_NULL_HANDLE, vulkan_declare_function)
+    vulkan_instance_1_1_functions(VK_NULL_HANDLE, vulkan_declare_function)
 
 #  undef vulkan_declare_function
 } VulkanContext;
@@ -423,6 +430,8 @@ begin_vulkan_context(ShAllocator allocator)
 
 vulkan_global_functions(vulkan_load_instance_function)
 
+    vulkan_context->vkEnumerateInstanceVersion(&vulkan_context->instance_version);
+
     VkApplicationInfo application_info;
     application_info.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     application_info.pNext              = 0;
@@ -449,7 +458,12 @@ vulkan_global_functions(vulkan_load_instance_function)
         return NULL;
     }
 
-vulkan_instance_functions(vulkan_context->instance, vulkan_load_instance_function)
+vulkan_instance_1_0_functions(vulkan_context->instance, vulkan_load_instance_function)
+
+    if (vulkan_context->instance_version >= VK_API_VERSION_1_1)
+    {
+vulkan_instance_1_1_functions(vulkan_context->instance, vulkan_load_instance_function)
+    }
 
 #  undef vulkan_load_instance_function
 
@@ -477,10 +491,7 @@ vulkan_command_version(ShThreadContext *thread_context, ShAllocator allocator, v
 {
     VulkanContext *vulkan_context = (VulkanContext *) context;
 
-    uint32_t version = VK_API_VERSION_1_0;
-    vulkan_context->vkEnumerateInstanceVersion(&version);
-
-    return push_string(allocator, parent, ShStringLiteral("version"), vk_version_to_string(thread_context, allocator, version));
+    return push_string(allocator, parent, ShStringLiteral("version"), vk_version_to_string(thread_context, allocator, vulkan_context->instance_version));
 }
 
 static Node *
@@ -627,6 +638,108 @@ vulkan_command_devices(ShThreadContext *thread_context, ShAllocator allocator, v
         push_string(allocator, device_node, ShStringLiteral("name"), sh_copy_string(allocator, ShCString(properties.deviceName)));
         push_string(allocator, device_node, ShStringLiteral("type"), vk_physical_device_type_to_string(thread_context, allocator, properties.deviceType));
         push_string(allocator, device_node, ShStringLiteral("api_version"), vk_version_to_string(thread_context, allocator, properties.apiVersion));
+
+        if (vulkan_context->instance_version >= VK_API_VERSION_1_1)
+        {
+            VkPhysicalDeviceProtectedMemoryFeatures protected_memory_features;
+            protected_memory_features.sType           = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES;
+            protected_memory_features.pNext           = NULL;
+            protected_memory_features.protectedMemory = VK_FALSE;
+
+            VkPhysicalDeviceFeatures2 device_features;
+            device_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            device_features.pNext = &protected_memory_features;
+
+            vulkan_context->vkGetPhysicalDeviceFeatures2(devices[i], &device_features);
+
+            Node *features_node = push_object(allocator, device_node, ShStringLiteral("features"), false);
+
+            push_boolean(allocator, features_node, ShStringLiteral("protectedMemory"), protected_memory_features.protectedMemory);
+        }
+
+        VkPhysicalDeviceMemoryProperties memory_properties;
+        vulkan_context->vkGetPhysicalDeviceMemoryProperties(devices[i], &memory_properties);
+
+        Node *heaps_node = push_array(allocator, device_node, ShStringLiteral("memory_heaps"), false);
+
+        for (uint32_t j = 0; j < memory_properties.memoryHeapCount; j += 1)
+        {
+            Node *heap_node = push_object(allocator, heaps_node, ShStringLiteral("__heap__"), true);
+
+            push_integer(allocator, heap_node, ShStringLiteral("size"), memory_properties.memoryHeaps[j].size);
+
+            Node *flags_node = push_array(allocator, heap_node, ShStringLiteral("flags"), true);
+
+            if (memory_properties.memoryHeaps[j].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_HEAP_DEVICE_LOCAL_BIT"));
+            }
+
+            if (memory_properties.memoryHeaps[j].flags & VK_MEMORY_HEAP_MULTI_INSTANCE_BIT)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_HEAP_MULTI_INSTANCE_BIT"));
+            }
+        }
+
+        Node *types_node = push_array(allocator, device_node, ShStringLiteral("memory_types"), false);
+
+        for (uint32_t j = 0; j < memory_properties.memoryTypeCount; j += 1)
+        {
+            Node *type_node = push_object(allocator, types_node, ShStringLiteral("__type__"), false);
+
+            push_integer(allocator, type_node, ShStringLiteral("heap_index"), memory_properties.memoryTypes[j].heapIndex);
+
+            Node *flags_node = push_array(allocator, type_node, ShStringLiteral("flags"), false);
+
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT"));
+            }
+
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT"));
+            }
+
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_HOST_COHERENT_BIT"));
+            }
+
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_HOST_CACHED_BIT"));
+            }
+
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT"));
+            }
+
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_PROTECTED_BIT)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_PROTECTED_BIT"));
+            }
+
+#ifdef VK_AMD_device_coherent_memory
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD"));
+            }
+
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD"));
+            }
+#endif
+
+#ifdef VK_NV_external_memory_rdma
+            if (memory_properties.memoryTypes[j].propertyFlags & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV)
+            {
+                push_string(allocator, flags_node, ShStringLiteral("__flag__"), ShStringLiteral("VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV"));
+            }
+#endif
+        }
 
         Node *extensions_node = push_array(allocator, device_node, ShStringLiteral("extensions"), false);
 
