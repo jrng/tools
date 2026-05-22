@@ -352,7 +352,7 @@ int main(int argument_count, char **arguments)
 
                     uint32_t *dst_row = texture.pixels + (uv.y * texture.width) + uv.x;
 
-                    uint16_t row_stride = (glyph->bound_height + 7) / 8;
+                    uint16_t row_stride = (glyph->bound_width + 7) / 8;
 
                     for (uint16_t y = 0; y < glyph->bound_height; y += 1)
                     {
