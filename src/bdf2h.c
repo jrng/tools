@@ -193,11 +193,25 @@ int main(int argument_count, char **arguments)
         if (sh_string_equal(keyword, ShStringLiteral("SIZE")))
         {
             int64_t value;
+            uint32_t y_res = 72;
 
             if (sh_parse_integer(&line, &value) && (value >= 0) && (value <= 0xFFFFFFFF))
             {
                 size = (uint32_t) value;
             }
+
+            line = sh_string_trim(line);
+
+            sh_parse_integer(&line, &value);
+
+            line = sh_string_trim(line);
+
+            if (sh_parse_integer(&line, &value) && (value >= 0) && (value <= 0xFFFFFFFF))
+            {
+                y_res = (uint32_t) value;
+            }
+
+            size = ((size * y_res) + 36) / 72;
         }
         // STARTPROPERTIES n
         else if (sh_string_equal(keyword, ShStringLiteral("STARTPROPERTIES")))
