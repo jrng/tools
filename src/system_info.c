@@ -228,6 +228,212 @@ handle_sub_command(ShThreadContext *thread_context, ShAllocator allocator,
     return result;
 }
 
+#if SH_PLATFORM_ANDROID || SH_PLATFORM_LINUX
+
+#  include <EGL/egl.h>
+#  include <EGL/eglext.h>
+
+typedef struct
+{
+    bool has_EGL_EXT_device_query;
+    bool has_EGL_EXT_device_enumeration;
+
+    PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT;
+    PFNEGLQUERYDEVICESTRINGEXTPROC eglQueryDeviceStringEXT;
+} EglContext;
+
+static void *
+begin_egl_context(ShAllocator allocator)
+{
+    EglContext *egl_context = sh_alloc_type(allocator, EglContext);
+
+    egl_context->has_EGL_EXT_device_query = false;
+    egl_context->has_EGL_EXT_device_enumeration = false;
+
+    const char *extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+
+    if (extensions)
+    {
+        const char *at = extensions;
+
+        for (;;)
+        {
+            while (*at == ' ')  at += 1;
+            if (!*at) break;
+            const char *start = at;
+            while (*at && (*at != ' '))  at += 1;
+
+            ShString extension = ShMakeString(at - start, start);
+
+            if (sh_string_equal(extension, ShStringLiteral("EGL_EXT_device_query")))
+            {
+                egl_context->has_EGL_EXT_device_query = true;
+            }
+            else if (sh_string_equal(extension, ShStringLiteral("EGL_EXT_device_enumeration")))
+            {
+                egl_context->has_EGL_EXT_device_enumeration = true;
+            }
+        }
+    }
+
+    if (egl_context->has_EGL_EXT_device_query)
+    {
+        egl_context->eglQueryDeviceStringEXT = (PFNEGLQUERYDEVICESTRINGEXTPROC) eglGetProcAddress("eglQueryDeviceStringEXT");
+    }
+
+    if (egl_context->has_EGL_EXT_device_enumeration)
+    {
+        egl_context->eglQueryDevicesEXT = (PFNEGLQUERYDEVICESEXTPROC) eglGetProcAddress("eglQueryDevicesEXT");
+    }
+
+    return egl_context;
+}
+
+static void
+end_egl_context(ShAllocator allocator, void *context)
+{
+    EglContext *egl_context = (EglContext *) context;
+    sh_free(allocator, egl_context);
+}
+
+static Node *
+egl_command_extensions(ShThreadContext *thread_context, ShAllocator allocator, void *context, ShString command, Node *parent)
+{
+    Node *extensions_node = push_array(allocator, parent, ShStringLiteral("extensions"), false);
+
+    const char *extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+
+    if (extensions)
+    {
+        const char *at = extensions;
+
+        for (;;)
+        {
+            while (*at == ' ')  at += 1;
+            if (!*at) break;
+            const char *start = at;
+            while (*at && (*at != ' '))  at += 1;
+
+            push_string(allocator, extensions_node, ShStringLiteral("__extension__"), sh_copy_string(allocator, ShMakeString(at - start, start)));
+        }
+    }
+
+    return extensions_node;
+}
+
+static Node *
+egl_command_devices(ShThreadContext *thread_context, ShAllocator allocator, void *context, ShString command, Node *parent)
+{
+    EglContext *egl_context = (EglContext *) context;
+
+    Node *devices_node = push_array(allocator, parent, ShStringLiteral("devices"), false);
+
+    if (egl_context->has_EGL_EXT_device_enumeration)
+    {
+        ShTemporaryMemory temp_memory = sh_begin_temporary_memory(thread_context, 1, &allocator);
+
+        EGLint device_count = 0;
+
+        if (!egl_context->eglQueryDevicesEXT(0, NULL, &device_count))
+        {
+            sh_end_temporary_memory(temp_memory);
+            return devices_node;
+        }
+
+        EGLDeviceEXT *devices = sh_alloc_array(temp_memory.allocator, EGLDeviceEXT, device_count);
+
+        if (!egl_context->eglQueryDevicesEXT(device_count, devices, &device_count))
+        {
+            sh_end_temporary_memory(temp_memory);
+            return devices_node;
+        }
+
+        for (EGLint i = 0; i < device_count; i += 1)
+        {
+            Node *device_node = push_object(allocator, devices_node, ShStringLiteral("__device__"), false);
+
+            if (egl_context->has_EGL_EXT_device_query)
+            {
+                bool has_EGL_EXT_device_query_name = false;
+
+                const char *extensions = egl_context->eglQueryDeviceStringEXT(devices[i], EGL_EXTENSIONS);
+
+                if (extensions)
+                {
+                    const char *at = extensions;
+
+                    for (;;)
+                    {
+                        while (*at == ' ')  at += 1;
+                        if (!*at) break;
+                        const char *start = at;
+                        while (*at && (*at != ' '))  at += 1;
+
+                        ShString extension = ShMakeString(at - start, start);
+
+                        if (sh_string_equal(extension, ShStringLiteral("EGL_EXT_device_query_name")))
+                        {
+                            has_EGL_EXT_device_query_name = true;
+                        }
+                    }
+                }
+
+                if (has_EGL_EXT_device_query_name)
+                {
+                    const char *vendor = egl_context->eglQueryDeviceStringEXT(devices[i], EGL_VENDOR);
+                    const char *renderer = egl_context->eglQueryDeviceStringEXT(devices[i], EGL_RENDERER_EXT);
+
+                    if (vendor)
+                    {
+                        push_string(allocator, device_node, ShStringLiteral("vendor"), sh_copy_string(allocator, ShCString(vendor)));
+                    }
+
+                    if (renderer)
+                    {
+                        push_string(allocator, device_node, ShStringLiteral("renderer"), sh_copy_string(allocator, ShCString(renderer)));
+                    }
+                }
+
+                Node *extensions_node = push_array(allocator, device_node, ShStringLiteral("extensions"), false);
+
+                if (extensions)
+                {
+                    const char *at = extensions;
+
+                    for (;;)
+                    {
+                        while (*at == ' ')  at += 1;
+                        if (!*at) break;
+                        const char *start = at;
+                        while (*at && (*at != ' '))  at += 1;
+
+                        push_string(allocator, extensions_node, ShStringLiteral("__extension__"), sh_copy_string(allocator, ShMakeString(at - start, start)));
+                    }
+                }
+            }
+        }
+
+        sh_end_temporary_memory(temp_memory);
+    }
+
+    return devices_node;
+}
+
+static InfoCommand egl_commands[] = {
+    { ShStringLiteral("extensions"), egl_command_extensions },
+    { ShStringLiteral("devices")   , egl_command_devices    },
+};
+
+static Node *
+info_command_egl(ShThreadContext *thread_context, ShAllocator allocator, void *context, ShString command, Node *parent)
+{
+    return handle_sub_command(thread_context, allocator, command, ShStringLiteral("egl"),
+                              parent, ShArrayCount(egl_commands), egl_commands,
+                              begin_egl_context, end_egl_context);
+}
+
+#endif // SH_PLATFORM_ANDROID || SH_PLATFORM_LINUX
+
 #if SH_PLATFORM_MACOS
 
 #  include <Foundation/Foundation.h>
@@ -1207,11 +1413,14 @@ info_command_wayland(ShThreadContext *thread_context, ShAllocator allocator, voi
 #endif // SH_PLATFORM_LINUX
 
 static InfoCommand info_commands[] = {
+#if SH_PLATFORM_ANDROID || SH_PLATFORM_LINUX
+    { ShStringConstant("egl")    , info_command_egl     },
+#endif
 #if SH_PLATFORM_MACOS
-    { ShStringConstant("metal") , info_command_metal  },
+    { ShStringConstant("metal")  , info_command_metal   },
 #endif
 #if SH_PLATFORM_ANDROID || SH_PLATFORM_WINDOWS || SH_PLATFORM_LINUX
-    { ShStringConstant("vulkan"), info_command_vulkan },
+    { ShStringConstant("vulkan") , info_command_vulkan  },
 #endif
 #if SH_PLATFORM_LINUX
     { ShStringConstant("wayland"), info_command_wayland },

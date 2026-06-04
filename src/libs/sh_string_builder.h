@@ -32,6 +32,7 @@ typedef struct
 
 SH_STRING_BUILDER_DEF void sh_string_builder_init(ShStringBuilder *builder, ShAllocator allocator);
 SH_STRING_BUILDER_DEF usize sh_string_builder_get_size(ShStringBuilder *builder);
+SH_STRING_BUILDER_DEF void sh_string_builder_append(ShStringBuilder *builder, ShStringBuilder *append);
 SH_STRING_BUILDER_DEF void sh_string_builder_append_u8(ShStringBuilder *builder, uint8_t c);
 SH_STRING_BUILDER_DEF void sh_string_builder_append_string(ShStringBuilder *builder, ShString str);
 SH_STRING_BUILDER_DEF void sh_string_builder_append_unsigned_number(ShStringBuilder *builder, uint64_t value,
@@ -40,6 +41,7 @@ SH_STRING_BUILDER_DEF void sh_string_builder_append_unsigned_number(ShStringBuil
 SH_STRING_BUILDER_DEF void sh_string_builder_append_signed_number(ShStringBuilder *builder, int64_t value,
                                                                   usize leading_character_count, uint8_t leading_character,
                                                                   uint64_t base, bool uppercase_digits);
+SH_STRING_BUILDER_DEF void sh_string_builder_append_float(ShStringBuilder *builder, double value, usize digits_after_decimal_point);
 SH_STRING_BUILDER_DEF void sh_string_builder_append_formated(ShStringBuilder *builder, ShString format, ...);
 SH_STRING_BUILDER_DEF void sh_string_builder_append_formated_valist(ShStringBuilder *builder, ShString format, va_list args);
 SH_STRING_BUILDER_DEF ShString sh_string_builder_to_string(ShStringBuilder *builder, ShAllocator allocator);
@@ -73,6 +75,29 @@ sh_string_builder_get_size(ShStringBuilder *builder)
     }
 
     return result;
+}
+
+SH_STRING_BUILDER_DEF void
+sh_string_builder_append(ShStringBuilder *builder, ShStringBuilder *append)
+{
+    // TODO: check if both builder have the same allocator
+
+    if (append->last_buffer)
+    {
+        if (builder->last_buffer)
+        {
+            builder->last_buffer->next = append->first_buffer;
+        }
+        else
+        {
+            builder->first_buffer = append->first_buffer;
+        }
+
+        builder->last_buffer = append->last_buffer;
+
+        append->first_buffer = NULL;
+        append->last_buffer = NULL;
+    }
 }
 
 static inline void
@@ -209,6 +234,35 @@ sh_string_builder_append_signed_number(ShStringBuilder *builder, int64_t value, 
 }
 
 SH_STRING_BUILDER_DEF void
+sh_string_builder_append_float(ShStringBuilder *builder, double value, usize digits_after_decimal_point)
+{
+    if (value < 0.0)
+    {
+        sh_string_builder_append_u8(builder, '-');
+        value = -value;
+    }
+
+    uint64_t a = (uint64_t) value;
+
+    sh_string_builder_append_unsigned_number(builder, a, 0, ' ', 10, false);
+
+    if (digits_after_decimal_point > 0)
+    {
+        double factor = 1.0;
+
+        for (usize i = 0; i < digits_after_decimal_point; i += 1)
+        {
+            factor *= 10.0;
+        }
+
+        uint64_t b = (uint64_t) ((value - (double) a) * factor);
+
+        sh_string_builder_append_u8(builder, '.');
+        sh_string_builder_append_unsigned_number(builder, b, digits_after_decimal_point, '0', 10, false);
+    }
+}
+
+SH_STRING_BUILDER_DEF void
 sh_string_builder_append_formated(ShStringBuilder *builder, ShString format, ...)
 {
     va_list args;
@@ -266,6 +320,11 @@ sh_string_builder_append_formated_valist(ShStringBuilder *builder, ShString form
                     case 'u':
                     {
                         sh_string_builder_append_unsigned_number(builder, va_arg(args, unsigned int), 0, '0', 10, false);
+                    } break;
+
+                    case 'f':
+                    {
+                        sh_string_builder_append_float(builder, va_arg(args, double), 6);
                     } break;
 
                     case 'z':

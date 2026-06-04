@@ -95,6 +95,14 @@ struct ShList
     (element)->next->prev = (element)->prev;         \
     (element)->prev = (element)->next = (element);
 
+#  define ShDListForEach(type, iter, sentinel)       \
+    for (type *iter = (sentinel)->next;              \
+         iter != (sentinel); iter = iter->next)
+
+#  define ShDListForEachReversed(type,iter,sentinel) \
+    for (type *iter = (sentinel)->prev;              \
+         iter != (sentinel); iter = iter->prev)
+
 typedef struct
 {
     usize count;
@@ -110,10 +118,12 @@ typedef struct
 #    define ShStringEmpty ShString {}
 #    define ShStringLiteral(str) ShString { sizeof(str) - 1, (uint8_t *) (str) }
 #    define ShCString(str) ShString { sh_c_string_get_length(str), (uint8_t *) (str) }
+#    define ShMakeString(count, ptr) ShString { (count), (uint8_t *) (ptr) }
 #  else
 #    define ShStringEmpty (ShString) { 0, NULL }
 #    define ShStringLiteral(str) (ShString) { sizeof(str) - 1, (uint8_t *) (str) }
 #    define ShCString(str) (ShString) { sh_c_string_get_length(str), (uint8_t *) (str) }
+#    define ShMakeString(count, ptr) (ShString) { (count), (uint8_t *) (ptr) }
 #  endif
 
 typedef struct

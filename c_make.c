@@ -15,7 +15,7 @@ C_MAKE_ENTRY()
             {
                 SoftwarePackage vulkan_sdk;
 
-                if (c_make_find_best_software_package("C:\\VulkanSDK", StringLiteral(""), &vulkan_sdk))
+                if (find_best_software_package("C:\\VulkanSDK", StringLiteral(""), &vulkan_sdk))
                 {
                     config_set("vulkan_sdk_root_path", vulkan_sdk.root_path);
                 }
@@ -53,13 +53,34 @@ C_MAKE_ENTRY()
             command_append(&cmd, c_string_path_concat(get_source_path(), "src", "system_info.c"));
             command_append_default_linker_flags(&cmd, get_target_architecture());
 
-            if (get_target_platform() == CMakePlatformMacOs)
+            switch (get_target_platform())
             {
-                command_append(&cmd, "-framework", "Foundation", "-framework", "Metal");
-            }
-            else if (get_target_platform() == CMakePlatformLinux)
-            {
-                command_append(&cmd, "-lwayland-client");
+                case PlatformAndroid:
+                {
+                    command_append(&cmd, "-lEGL");
+                } break;
+
+                case PlatformFreeBsd:
+                {
+                } break;
+
+                case PlatformWindows:
+                {
+                } break;
+
+                case PlatformLinux:
+                {
+                    command_append(&cmd, "-lwayland-client", "-lEGL");
+                } break;
+
+                case PlatformMacOs:
+                {
+                    command_append(&cmd, "-framework", "Foundation", "-framework", "Metal");
+                } break;
+
+                case PlatformWeb:
+                {
+                } break;
             }
 
             c_make_log(LogLevelInfo, "compile 'system_info'\n");
