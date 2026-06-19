@@ -192,26 +192,29 @@ int main(int argument_count, char **arguments)
         // SIZE PointSize Xres Yres
         if (sh_string_equal(keyword, ShStringLiteral("SIZE")))
         {
-            int64_t value;
-            uint32_t y_res = 72;
-
-            if (sh_parse_integer(&line, &value) && (value >= 0) && (value <= 0xFFFFFFFF))
+            if (size == 0)
             {
-                size = (uint32_t) value;
+                int64_t value;
+                uint32_t y_res = 72;
+
+                if (sh_parse_integer(&line, &value) && (value >= 0) && (value <= 0xFFFFFFFF))
+                {
+                    size = (uint32_t) value;
+                }
+
+                line = sh_string_trim(line);
+
+                sh_parse_integer(&line, &value);
+
+                line = sh_string_trim(line);
+
+                if (sh_parse_integer(&line, &value) && (value >= 0) && (value <= 0xFFFFFFFF))
+                {
+                    y_res = (uint32_t) value;
+                }
+
+                size = ((size * y_res) + 36) / 72;
             }
-
-            line = sh_string_trim(line);
-
-            sh_parse_integer(&line, &value);
-
-            line = sh_string_trim(line);
-
-            if (sh_parse_integer(&line, &value) && (value >= 0) && (value <= 0xFFFFFFFF))
-            {
-                y_res = (uint32_t) value;
-            }
-
-            size = ((size * y_res) + 36) / 72;
         }
         // STARTPROPERTIES n
         else if (sh_string_equal(keyword, ShStringLiteral("STARTPROPERTIES")))
@@ -280,6 +283,16 @@ int main(int argument_count, char **arguments)
                         font_weight.data = line.data;
 
                         font_weight = sh_string_ascii_to_lower(allocator, font_weight);
+                    }
+                }
+                // PIXEL_SIZE size
+                else if (sh_string_equal(keyword, ShStringLiteral("PIXEL_SIZE")))
+                {
+                    int64_t value;
+
+                    if (sh_parse_integer(&line, &value) && (value >= 0) && (value <= 0xFFFFFFFF))
+                    {
+                        size = (uint32_t) value;
                     }
                 }
                 else if (sh_string_equal(keyword, ShStringLiteral("ENDPROPERTIES")))
